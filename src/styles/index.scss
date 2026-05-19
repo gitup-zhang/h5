@@ -1,0 +1,15 @@
+@use './reset';
+@use './variables' as *;
+
+body {
+  min-width: 320px;
+  color: $text-color;
+  background: $page-background;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans SC', sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+}
