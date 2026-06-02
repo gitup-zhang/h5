@@ -12,6 +12,22 @@ const router = createRouter({
       },
     },
     {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/LoginView.vue'),
+      meta: {
+        title: '登录',
+      },
+    },
+    {
+      path: '/mine',
+      name: 'mine',
+      component: () => import('@/views/MineView.vue'),
+      meta: {
+        title: '我的',
+      },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFoundView.vue'),

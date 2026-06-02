@@ -12,6 +12,6 @@
   min-height: 100vh;
   align-items: center;
   justify-content: center;
-  background: #f7f8fa;
+  background: #f5f5f3;
 }
 </style>
