@@ -31,12 +31,14 @@
 
         <van-form v-if="activeTab === 'password'" class="login-form" @submit="handlePasswordLogin">
           <van-field
-            v-model.trim="passwordForm.account"
-            name="account"
-            label="账号"
-            placeholder="请输入账号"
+            v-model.trim="passwordForm.phone"
+            name="phone"
+            label="手机号"
+            type="tel"
+            maxlength="11"
+            placeholder="请输入手机号"
             clearable
-            autocomplete="username"
+            autocomplete="tel"
           />
           <van-field
             v-model.trim="passwordForm.password"
@@ -47,7 +49,14 @@
             clearable
             autocomplete="current-password"
           />
-          <van-button class="login-form__submit" type="primary" block native-type="submit">
+          <van-button
+            class="login-form__submit"
+            type="primary"
+            block
+            native-type="submit"
+            :loading="submitting"
+            :disabled="submitting"
+          >
             登录
           </van-button>
         </van-form>
@@ -77,14 +86,21 @@
               <button
                 class="code-button"
                 type="button"
-                :disabled="isCodeCounting"
-                @click="sendCode"
+                :disabled="isCodeCounting || submitting"
+                @click="sendCode('LOGIN')"
               >
                 {{ codeButtonText }}
               </button>
             </template>
           </van-field>
-          <van-button class="login-form__submit" type="primary" block native-type="submit">
+          <van-button
+            class="login-form__submit"
+            type="primary"
+            block
+            native-type="submit"
+            :loading="submitting"
+            :disabled="submitting"
+          >
             登录
           </van-button>
         </van-form>
@@ -124,8 +140,8 @@
               <button
                 class="code-button"
                 type="button"
-                :disabled="isCodeCounting"
-                @click="sendCode"
+                :disabled="isCodeCounting || submitting"
+                @click="sendCode('REGISTER')"
               >
                 {{ codeButtonText }}
               </button>
@@ -149,7 +165,14 @@
             clearable
             autocomplete="new-password"
           />
-          <van-button class="login-form__submit" type="primary" block native-type="submit">
+          <van-button
+            class="login-form__submit"
+            type="primary"
+            block
+            native-type="submit"
+            :loading="submitting"
+            :disabled="submitting"
+          >
             创建账号
           </van-button>
         </van-form>
@@ -165,17 +188,27 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { showToast } from 'vant'
+import { sendSms, verifySms } from '@/api/user'
+import { useUserStore } from '@/stores/user'
+import type { SmsPurpose } from '@/types/user'
 
 type LoginTab = 'password' | 'sms'
 type AuthMode = 'login' | 'register'
 
 const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+
 const authMode = ref<AuthMode>('login')
 const activeTab = ref<LoginTab>('password')
+const submitting = ref(false)
 const countdown = ref(0)
 let countdownTimer: number | undefined
+
+/** 登录成功后跳转的目标路径 */
+const redirect = (route.query.redirect as string) || '/'
 
 const pageTitle = computed(() => (authMode.value === 'login' ? '登录活动中心' : '创建账号'))
 const pageDesc = computed(() =>
@@ -185,7 +218,7 @@ const pageDesc = computed(() =>
 )
 
 const passwordForm = reactive({
-  account: '',
+  phone: '',
   password: '',
 })
 
@@ -206,9 +239,11 @@ const codeButtonText = computed(() => (countdown.value > 0 ? `${countdown.value}
 
 const isValidMobile = (mobile: string) => /^1[3-9]\d{9}$/.test(mobile)
 
-const currentMobile = computed(() =>
-  authMode.value === 'register' ? registerForm.mobile : smsForm.mobile,
-)
+/** 根据当前模式获取发送验证码的手机号 */
+const getSmsMobile = (purpose: SmsPurpose): string => {
+  if (purpose === 'REGISTER') return registerForm.mobile
+  return smsForm.mobile
+}
 
 const resetCountdown = () => {
   countdown.value = 0
@@ -221,14 +256,44 @@ const switchAuthMode = (mode: AuthMode) => {
   resetCountdown()
 }
 
-const enterHome = () => {
-  showToast('登录成功')
-  router.replace('/')
+// ─── 发送验证码 ──────────────────────────────────────
+
+const sendCode = async (purpose: SmsPurpose) => {
+  const mobile = getSmsMobile(purpose)
+  if (!isValidMobile(mobile)) {
+    showToast('请输入正确的手机号')
+    return
+  }
+
+  try {
+    await sendSms({ phone_number: mobile, purpose })
+    showToast('验证码已发送')
+
+    // 开启倒计时
+    countdown.value = 60
+    window.clearInterval(countdownTimer)
+    countdownTimer = window.setInterval(() => {
+      countdown.value -= 1
+      if (countdown.value <= 0) {
+        window.clearInterval(countdownTimer)
+        countdownTimer = undefined
+      }
+    }, 1000)
+  } catch {
+    // 错误已由 http 拦截器统一 toast 提示
+  }
 }
 
-const handlePasswordLogin = () => {
-  if (!passwordForm.account) {
-    showToast('请输入账号')
+// ─── 密码登录 ────────────────────────────────────────
+
+const handlePasswordLogin = async () => {
+  if (!passwordForm.phone) {
+    showToast('请输入手机号')
+    return
+  }
+
+  if (!isValidMobile(passwordForm.phone)) {
+    showToast('请输入正确的手机号')
     return
   }
 
@@ -242,31 +307,64 @@ const handlePasswordLogin = () => {
     return
   }
 
-  enterHome()
+  submitting.value = true
+  try {
+    await userStore.loginWithPassword({
+      phone_number: passwordForm.phone,
+      password: passwordForm.password,
+    })
+    router.replace(redirect)
+  } catch {
+    // 错误已由 http 拦截器统一 toast 提示
+  } finally {
+    submitting.value = false
+  }
 }
 
-const handleSmsLogin = () => {
+// ─── 短信登录 ────────────────────────────────────────
+
+const handleSmsLogin = async () => {
   if (!isValidMobile(smsForm.mobile)) {
     showToast('请输入正确的手机号')
     return
   }
 
-  if (!/^\d{6}$/.test(smsForm.code)) {
-    showToast('请输入 6 位验证码')
+  if (!/^\d{4}$/.test(smsForm.code)) {
+    showToast('请输入 4 位验证码')
     return
   }
 
-  enterHome()
+  submitting.value = true
+  try {
+    // 1. 校验短信验证码
+    const verifyRes = await verifySms({
+      phone_number: smsForm.mobile,
+      code: smsForm.code,
+      purpose: 'LOGIN',
+    })
+    // 2. 短信登录
+    await userStore.loginWithSms({
+      phone_number: smsForm.mobile,
+      verify_token: verifyRes.data.verify_token,
+    })
+    router.replace(redirect)
+  } catch {
+    // 错误已由 http 拦截器统一 toast 提示
+  } finally {
+    submitting.value = false
+  }
 }
 
-const handleRegister = () => {
+// ─── 注册 ────────────────────────────────────────────
+
+const handleRegister = async () => {
   if (!isValidMobile(registerForm.mobile)) {
     showToast('请输入正确的手机号')
     return
   }
 
-  if (!/^\d{6}$/.test(registerForm.code)) {
-    showToast('请输入 6 位验证码')
+  if (!/^\d{4}$/.test(registerForm.code)) {
+    showToast('请输入 4 位验证码')
     return
   }
 
@@ -285,33 +383,33 @@ const handleRegister = () => {
     return
   }
 
-  passwordForm.account = registerForm.mobile
-  passwordForm.password = registerForm.password
-  activeTab.value = 'password'
-  registerForm.code = ''
-  registerForm.confirmPassword = ''
-  switchAuthMode('login')
-  showToast('注册成功，请登录')
-}
+  submitting.value = true
+  try {
+    // 1. 校验短信验证码
+    const verifyRes = await verifySms({
+      phone_number: registerForm.mobile,
+      code: registerForm.code,
+      purpose: 'REGISTER',
+    })
+    // 2. 注册
+    await userStore.registerAccount({
+      phone_number: registerForm.mobile,
+      password: registerForm.password,
+      verify_token: verifyRes.data.verify_token,
+    })
 
-const sendCode = () => {
-  if (!isValidMobile(currentMobile.value)) {
-    showToast('请输入正确的手机号')
-    return
+    // 注册成功后回填登录表单并切换到登录页
+    passwordForm.phone = registerForm.mobile
+    passwordForm.password = registerForm.password
+    registerForm.code = ''
+    registerForm.confirmPassword = ''
+    activeTab.value = 'password'
+    switchAuthMode('login')
+  } catch {
+    // 错误已由 http 拦截器统一 toast 提示
+  } finally {
+    submitting.value = false
   }
-
-  countdown.value = 60
-  showToast('验证码已发送')
-
-  window.clearInterval(countdownTimer)
-  countdownTimer = window.setInterval(() => {
-    countdown.value -= 1
-
-    if (countdown.value <= 0) {
-      window.clearInterval(countdownTimer)
-      countdownTimer = undefined
-    }
-  }, 1000)
 }
 
 onBeforeUnmount(() => {

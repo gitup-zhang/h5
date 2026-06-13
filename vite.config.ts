@@ -23,6 +23,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: Number(env.VITE_DEV_PORT || 5173),
+      proxy: {
+        '/api': {
+          target: 'http://47.113.194.28:8080',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, '/api'),
+        },
+      },
     },
   }
 })
