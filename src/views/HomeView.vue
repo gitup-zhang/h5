@@ -203,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
@@ -281,9 +281,19 @@ const onBannerScroll = () => {
   if (idx !== activeBanner.value) activeBanner.value = idx
 }
 
+const teardownBannerScroll = () => {
+  if (scrollTimer) {
+    clearInterval(scrollTimer)
+    scrollTimer = null
+  }
+  bannerScrollRef.value?.removeEventListener('scroll', onBannerScroll)
+}
+
 const setupBannerScroll = () => {
   const el = bannerScrollRef.value
-  if (!el) return
+  if (!el || inProgressEvents.value.length === 0) return
+  // Clean up any existing instance first
+  teardownBannerScroll()
   el.addEventListener('scroll', onBannerScroll, { passive: true })
   scrollTimer = setInterval(() => {
     if (!bannerScrollRef.value || inProgressEvents.value.length === 0) return
@@ -299,9 +309,23 @@ watch(inProgressEvents, (val) => {
   }
 })
 
+// Keep-alive: pause auto-scroll when component is hidden, resume when visible
+onDeactivated(() => {
+  if (scrollTimer) {
+    clearInterval(scrollTimer)
+    scrollTimer = null
+  }
+})
+
+onActivated(() => {
+  // Resume banner auto-scroll if data is available
+  if (inProgressEvents.value.length > 0 && !scrollTimer) {
+    setupBannerScroll()
+  }
+})
+
 onUnmounted(() => {
-  if (scrollTimer) clearInterval(scrollTimer)
-  bannerScrollRef.value?.removeEventListener('scroll', onBannerScroll)
+  teardownBannerScroll()
 })
 
 const showMoreActivities = () => {
@@ -366,6 +390,11 @@ onMounted(() => {
     searchResults.value = searchStore.results
   }
   fetchHomeData()
+  messageStore.fetchUnreadCount()
+})
+
+// Keep-alive: 返回首页时只轻量刷新未读计数，不重新拉取活动数据
+onActivated(() => {
   messageStore.fetchUnreadCount()
 })
 

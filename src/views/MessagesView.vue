@@ -10,47 +10,49 @@
       </div>
     </header>
 
-    <van-list
-      :loading="loading"
-      :finished="finished"
-      finished-text="没有更多消息了"
-      @load="fetchMessages"
-    >
-      <section v-if="messages.length > 0" class="message-list">
-        <article
-          v-for="msg in messages"
-          :key="msg.id"
-          class="message-card"
-          :class="{
-            'message-card--unread': msg.is_read === 0,
-            'message-card--clickable': true,
-            'message-card--expanded': isExpanded(msg.id),
-          }"
-          @click="handleMessageClick(msg)"
-        >
-          <div class="message-dot" :class="{ 'message-dot--unread': msg.is_read === 0 }"></div>
-          <div class="message-body">
-            <div class="message-header">
-              <h2>{{ msg.title }}</h2>
-              <span class="message-time">{{ formatTime(msg.send_time) }}</span>
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <van-list
+        :loading="loading"
+        :finished="finished"
+        finished-text="没有更多消息了"
+        @load="fetchMessages"
+      >
+        <section v-if="messages.length > 0" class="message-list">
+          <article
+            v-for="msg in messages"
+            :key="msg.id"
+            class="message-card"
+            :class="{
+              'message-card--unread': msg.is_read === 0,
+              'message-card--clickable': true,
+              'message-card--expanded': isExpanded(msg.id),
+            }"
+            @click="handleMessageClick(msg)"
+          >
+            <div class="message-dot" :class="{ 'message-dot--unread': msg.is_read === 0 }"></div>
+            <div class="message-body">
+              <div class="message-header">
+                <h2>{{ msg.title }}</h2>
+                <span class="message-time">{{ formatTime(msg.send_time) }}</span>
+              </div>
+              <p
+                class="message-content"
+                :class="{ 'message-content--expanded': isExpanded(msg.id) }"
+              >{{ msg.content }}</p>
+              <span
+                v-if="isSystemMessage(msg)"
+                class="message-expand-hint"
+              >{{ isExpanded(msg.id) ? '收起' : '展开' }}</span>
             </div>
-            <p
-              class="message-content"
-              :class="{ 'message-content--expanded': isExpanded(msg.id) }"
-            >{{ msg.content }}</p>
-            <span
-              v-if="isSystemMessage(msg)"
-              class="message-expand-hint"
-            >{{ isExpanded(msg.id) ? '收起' : '展开' }}</span>
-          </div>
-        </article>
-      </section>
+          </article>
+        </section>
 
-      <div v-else-if="!loading" class="empty-state">
-        <van-icon name="envelope-o" size="48" />
-        <p>暂无消息</p>
-      </div>
-    </van-list>
+        <div v-else-if="!loading" class="empty-state">
+          <van-icon name="envelope-o" size="48" />
+          <p>暂无消息</p>
+        </div>
+      </van-list>
+    </van-pull-refresh>
   </main>
 </template>
 
@@ -69,6 +71,7 @@ const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const finished = ref(false)
+const refreshing = ref(false)
 
 // ── 展开/收起 ──
 
@@ -102,6 +105,31 @@ const handleMessageClick = (msg: MessageItem) => {
   router.push({ name: 'activity-detail', params: { id: msg.target_id } })
 }
 
+// ── 下拉刷新 ──
+
+const onRefresh = async () => {
+  // 重置分页状态
+  page.value = 1
+  finished.value = false
+  expandedIds.value = new Set()
+
+  try {
+    const res = await getMessages({ page: 1, page_size: 10 })
+    messages.value = res.data.list
+    total.value = res.data.total
+    if (messages.value.length >= res.data.total) {
+      finished.value = true
+    } else {
+      page.value = 2
+    }
+    messageStore.clearUnreadCount()
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    refreshing.value = false
+  }
+}
+
 const formatTime = (iso: string) => {
   const d = dayjs(iso)
   const now = dayjs()
@@ -112,7 +140,7 @@ const formatTime = (iso: string) => {
 }
 
 const fetchMessages = async () => {
-  if (loading.value || finished.value) return
+  if (loading.value || finished.value || refreshing.value) return
   loading.value = true
   try {
     const res = await getMessages({ page: page.value, page_size: 10 })
@@ -143,9 +171,10 @@ const goBack = () => router.back()
   max-width: 430px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: 0 16px 32px;
   color: #111827;
   background: #f7f8fa;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-nav {
@@ -154,7 +183,7 @@ const goBack = () => router.back()
   z-index: 20;
   display: grid;
   min-height: 72px;
-  padding: 10px 0;
+  padding: 10px 16px;
   grid-template-columns: 40px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
@@ -178,6 +207,14 @@ const goBack = () => router.back()
   }
 }
 
+// PullRefresh 占满剩余空间
+:deep(.van-pull-refresh) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 32px;
+}
+
 .back-button {
   display: grid;
   width: 36px;
@@ -194,6 +231,7 @@ const goBack = () => router.back()
   display: grid;
   gap: 10px;
   margin-top: 8px;
+  padding: 0 16px;
 }
 
 .message-card {
@@ -299,6 +337,7 @@ const goBack = () => router.back()
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 0 16px;
   color: #c3cad3;
 
   .van-icon {

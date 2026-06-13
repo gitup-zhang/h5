@@ -1,5 +1,9 @@
 <template>
-  <RouterView />
+  <RouterView v-slot="{ Component }">
+    <keep-alive :include="['HomeView', 'MineView']">
+      <component :is="Component" />
+    </keep-alive>
+  </RouterView>
   <!-- 登录后领域为空时弹出选择 -->
   <FieldSelectDialog
     ref="fieldPickerRef"
