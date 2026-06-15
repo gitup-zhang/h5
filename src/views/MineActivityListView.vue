@@ -11,23 +11,37 @@
     </header>
 
     <section v-if="activities.length" class="activity-list">
-      <button
+      <van-swipe-cell
         v-for="event in activities"
         :key="event.id"
-        type="button"
-        class="activity-card"
-        @click="openActivity(event.id)"
+        :right-width="88"
+        :disabled="cancellingIds.has(event.id)"
       >
-        <img :src="event.cover_image_url" :alt="event.title" />
-        <div class="activity-info">
-          <div class="activity-title">
-            <h2>{{ event.title }}</h2>
-            <span>{{ getTagText(event) }}</span>
+        <button
+          type="button"
+          class="activity-card"
+          @click="openActivity(event.id)"
+        >
+          <img :src="event.cover_image_url" :alt="event.title" />
+          <div class="activity-info">
+            <div class="activity-title">
+              <h2>{{ event.title }}</h2>
+              <span :class="getTagClass(event)">{{ getTagText(event) }}</span>
+            </div>
+            <p><van-icon name="calendar-o" />{{ formatTime(event.event_start_time) }} - {{ formatTime(event.event_end_time) }}</p>
+            <p><van-icon name="location-o" />{{ event.event_address }}</p>
           </div>
-          <p><van-icon name="calendar-o" />{{ formatTime(event.event_start_time) }} - {{ formatTime(event.event_end_time) }}</p>
-          <p><van-icon name="location-o" />{{ event.event_address }}</p>
-        </div>
-      </button>
+        </button>
+        <template #right>
+          <button
+            type="button"
+            class="swipe-cancel-btn"
+            @click="handleCancel(event)"
+          >
+            {{ cancellingIds.has(event.id) ? '取消中' : '取消报名' }}
+          </button>
+        </template>
+      </van-swipe-cell>
     </section>
 
     <div v-else class="empty-state">
@@ -41,14 +55,18 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
+import { showConfirmDialog } from 'vant'
 import { getMyRegistrations } from '@/api/event'
+import { useActivityStore } from '@/stores/activity'
 import type { EventItem } from '@/types/event'
 
 const route = useRoute()
 const router = useRouter()
+const activityStore = useActivityStore()
 
 const activities = ref<EventItem[]>([])
 const loading = ref(false)
+const cancellingIds = ref(new Set<number>())
 const pageTitle = ref('我的报名')
 
 const formatTime = (iso: string) => {
@@ -57,6 +75,10 @@ const formatTime = (iso: string) => {
 
 const getTagText = (event: EventItem) => {
   return event.status.includes('结束') ? '已完成' : '待参加'
+}
+
+const getTagClass = (event: EventItem) => {
+  return event.status.includes('结束') ? 'tag-finished' : 'tag-upcoming'
 }
 
 const fetchData = async () => {
@@ -74,6 +96,33 @@ const fetchData = async () => {
 onMounted(() => {
   fetchData()
 })
+
+const handleCancel = async (event: EventItem) => {
+  try {
+    await showConfirmDialog({
+      title: '取消报名',
+      message: `确定要取消「${event.title}」的报名吗？`,
+      confirmButtonText: '确定取消',
+      cancelButtonText: '再想想',
+      confirmButtonColor: '#ef4444',
+    })
+  } catch {
+    // 用户取消
+    return
+  }
+
+  cancellingIds.value = new Set([...cancellingIds.value, event.id])
+  try {
+    await activityStore.cancelEventRegistration(event.id)
+    activities.value = activities.value.filter((e) => e.id !== event.id)
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    const next = new Set(cancellingIds.value)
+    next.delete(event.id)
+    cancellingIds.value = next
+  }
+}
 
 const goBack = () => router.back()
 
@@ -142,9 +191,21 @@ const openActivity = (id: number) => {
   margin-top: 8px;
 }
 
+// ── SwipeCell 覆盖 ──
+
+:deep(.van-swipe-cell) {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+:deep(.van-swipe-cell__wrapper) {
+  border-radius: 16px;
+}
+
 .activity-card {
   display: grid;
   width: 100%;
+  height: 110px;
   padding: 12px;
   grid-template-columns: 86px minmax(0, 1fr);
   gap: 12px;
@@ -161,6 +222,29 @@ const openActivity = (id: number) => {
     object-fit: cover;
     background: #eef1f4;
     border-radius: 13px;
+  }
+}
+
+// ── 右滑取消按钮 ──
+
+.swipe-cancel-btn {
+  display: flex;
+  width: 88px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: 0;
+  border-radius: 0 16px 16px 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+
+  &:active {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   }
 }
 
@@ -199,14 +283,24 @@ const openActivity = (id: number) => {
     letter-spacing: 0;
   }
 
-  span {
-    padding: 4px 7px;
-    color: #047857;
+  .tag-upcoming {
+    padding: 4px 8px;
+    color: #2563eb;
     font-size: 11px;
     font-weight: 800;
     line-height: 1;
-    background: #ecfdf5;
-    border-radius: 7px;
+    background: #eff6ff;
+    border-radius: 6px;
+  }
+
+  .tag-finished {
+    padding: 4px 8px;
+    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    background: #f3f4f6;
+    border-radius: 6px;
   }
 }
 

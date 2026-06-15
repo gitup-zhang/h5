@@ -69,6 +69,7 @@
 
     <!-- Normal mode -->
     <template v-else>
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
     <section class="top-bar" aria-label="搜索活动">
       <div class="search-box" @click="openSearch">
         <van-icon name="search" />
@@ -86,9 +87,9 @@
         <button v-if="inProgressEvents.length > 0" type="button" @click="showMoreActivities">查看更多 <van-icon name="arrow" /></button>
       </div>
       <div v-if="loading" class="skeleton-banner"></div>
-      <div v-if="!loading && inProgressEvents.length > 0" class="banner-scroll" ref="bannerScrollRef">
+      <div v-if="!loading && bannerEvents.length > 0" class="banner-scroll" ref="bannerScrollRef">
         <article
-          v-for="event in inProgressEvents"
+          v-for="event in bannerEvents"
           :key="event.id"
           class="banner-card"
           @click="openActivity(event.id)"
@@ -123,9 +124,9 @@
           </div>
         </article>
       </div>
-      <div v-if="!loading && inProgressEvents.length > 0" class="banner-dots" aria-hidden="true">
+      <div v-if="!loading && bannerEvents.length > 0" class="banner-dots" aria-hidden="true">
         <span
-          v-for="(event, idx) in inProgressEvents"
+          v-for="(event, idx) in bannerEvents"
           :key="event.id"
           class="banner-dots__item"
           :class="{ 'banner-dots__item--active': idx === activeBanner }"
@@ -198,12 +199,13 @@
       <van-tabbar-item replace to="/" icon="home-o">首页</van-tabbar-item>
       <van-tabbar-item replace to="/mine" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
+    </van-pull-refresh>
     </template>
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
@@ -224,8 +226,12 @@ const { unreadCount } = storeToRefs(messageStore)
 
 const inProgressEvents = ref<EventItem[]>([])
 const upcomingEvents = ref<EventItem[]>([])
+
+/** Banner 最多展示 3 个 */
+const bannerEvents = computed(() => inProgressEvents.value.slice(0, 3))
 const searchLoading = ref(false)
 const loading = ref(false)
+const refreshing = ref(false)
 
 const fetchHomeData = async () => {
   loading.value = true
@@ -240,6 +246,29 @@ const fetchHomeData = async () => {
     // 错误已由拦截器处理
   } finally {
     loading.value = false
+  }
+}
+
+// ── 下拉刷新 ──
+
+const onRefresh = async () => {
+  try {
+    const [inProgressRes, upcomingRes] = await Promise.all([
+      getEventList({ event_status: 'InProgress', page_size: 5 }),
+      getEventList({ event_status: 'NotBegun', page_size: 10 }),
+    ])
+    inProgressEvents.value = inProgressRes.data.list
+    upcomingEvents.value = upcomingRes.data.list
+    // 重置 banner
+    activeBanner.value = 0
+    teardownBannerScroll()
+    if (bannerEvents.value.length > 0) {
+      setTimeout(setupBannerScroll, 100)
+    }
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -291,19 +320,19 @@ const teardownBannerScroll = () => {
 
 const setupBannerScroll = () => {
   const el = bannerScrollRef.value
-  if (!el || inProgressEvents.value.length === 0) return
+  if (!el || bannerEvents.value.length === 0) return
   // Clean up any existing instance first
   teardownBannerScroll()
   el.addEventListener('scroll', onBannerScroll, { passive: true })
   scrollTimer = setInterval(() => {
-    if (!bannerScrollRef.value || inProgressEvents.value.length === 0) return
-    const next = (activeBanner.value + 1) % inProgressEvents.value.length
+    if (!bannerScrollRef.value || bannerEvents.value.length === 0) return
+    const next = (activeBanner.value + 1) % bannerEvents.value.length
     bannerScrollRef.value.scrollTo({ left: next * bannerScrollRef.value.offsetWidth, behavior: 'smooth' })
   }, 4000)
 }
 
 // Watch for banner data to setup scroll
-watch(inProgressEvents, (val) => {
+watch(bannerEvents, (val) => {
   if (val.length > 0) {
     setTimeout(setupBannerScroll, 100)
   }
@@ -319,7 +348,7 @@ onDeactivated(() => {
 
 onActivated(() => {
   // Resume banner auto-scroll if data is available
-  if (inProgressEvents.value.length > 0 && !scrollTimer) {
+  if (bannerEvents.value.length > 0 && !scrollTimer) {
     setupBannerScroll()
   }
 })
@@ -1050,6 +1079,10 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 -10px 28px rgba(105, 121, 151, 0.12);
   backdrop-filter: blur(18px);
+}
+
+:deep(.van-pull-refresh) {
+  min-height: calc(100vh - 46px - 88px); // 保证可滚动区域足够触发下拉
 }
 
 :deep(.van-tabbar-item) {

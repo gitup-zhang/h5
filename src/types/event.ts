@@ -20,7 +20,7 @@ export interface EventImage {
 // ─── 报名所需用户信息字段 ────────────────────────────
 
 export interface EventUserInfoField {
-  user_info_id: number
+  id: number
   code: string
   name: string
 }

@@ -661,7 +661,7 @@ const sendPhoneCode = async () => {
   phoneError.value = ''
   try {
     await sendSms({ phone_number: phone, purpose: 'CHANGE_PASSWORD' })
-    showToast('验证码已发送')
+    showToast({ message: '验证码已发送' })
 
     countdown.value = 60
     window.clearInterval(timer)
@@ -701,7 +701,7 @@ const submitChangePhone = async () => {
       phone_number: phone,
       verify_token: verifyRes.data.verify_token,
     })
-    showToast('手机号修改成功')
+    showToast({ message: '手机号修改成功' })
     phoneForm.newPhone = ''
     phoneForm.code = ''
     countdown.value = 0

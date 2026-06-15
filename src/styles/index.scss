@@ -13,3 +13,16 @@ body {
 #app {
   min-height: 100vh;
 }
+
+// 强制 Toast 文字可见 - 调试用
+.van-toast {
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.8) !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.van-toast__text {
+  color: #fff !important;
+  font-size: 14px !important;
+  -webkit-text-fill-color: #fff !important;
+}

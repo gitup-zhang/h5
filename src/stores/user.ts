@@ -99,7 +99,7 @@ export const useUserStore = defineStore('user', {
       const res = await passwordLogin(params)
       this.setTokens(res.data)
       await this.fetchProfile()
-      showToast('登录成功')
+      showToast({ message: '登录成功' })
     },
 
     /** 短信验证码登录 */
@@ -107,13 +107,13 @@ export const useUserStore = defineStore('user', {
       const res = await smsLogin(params)
       this.setTokens(res.data)
       await this.fetchProfile()
-      showToast('登录成功')
+      showToast({ message: '登录成功' })
     },
 
     /** 注册（不自动登录，需用户再走登录流程） */
     async registerAccount(params: RegisterParams) {
       await register(params)
-      showToast('注册成功，请登录')
+      showToast({ message: '注册成功，请登录' })
     },
 
     // ─── 用户信息 ───────────────────────────────────────
@@ -141,7 +141,7 @@ export const useUserStore = defineStore('user', {
     /** 修改密码（已登录场景） */
     async changePassword(payload: ChangePasswordParams) {
       await changePassword(payload)
-      showToast('密码修改成功')
+      showToast({ message: '密码修改成功' })
     },
 
     /** 修改手机号（已登录场景） */

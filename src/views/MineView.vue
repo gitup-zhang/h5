@@ -54,27 +54,55 @@
     <section class="activity-section">
       <div class="section-head">
         <h2>我的报名</h2>
-        <span>{{ myEvents.length }} 场</span>
+        <div class="section-head__right">
+          <span>{{ activityStore.myEventsTotal }} 场</span>
+          <button
+            type="button"
+            class="refresh-btn"
+            :class="{ 'refresh-btn--spinning': refreshing }"
+            :disabled="refreshing"
+            aria-label="刷新活动"
+            @click="refreshActivities"
+          >
+            <van-icon name="replay" size="16" />
+          </button>
+        </div>
       </div>
 
       <div v-if="myEventsPreview.length" class="activity-list">
-        <button
+        <van-swipe-cell
           v-for="event in myEventsPreview"
           :key="event.id"
-          type="button"
-          class="activity-item"
-          @click="openActivity(event.id)"
+          :right-width="80"
+          :disabled="cancellingIds.has(event.id)"
         >
-          <img :src="event.cover_image_url" :alt="event.title" />
-          <div class="activity-info">
-            <div class="activity-title">
-              <h3>{{ event.title }}</h3>
-              <span>{{ event.status.includes('结束') ? '已完成' : '待参加' }}</span>
+          <button
+            type="button"
+            class="activity-item"
+            @click="openActivity(event.id)"
+          >
+            <img :src="event.cover_image_url" :alt="event.title" />
+            <div class="activity-info">
+              <div class="activity-title">
+                <h3>{{ event.title }}</h3>
+                <span :class="event.status.includes('结束') ? 'tag-finished' : 'tag-upcoming'">
+                  {{ event.status.includes('结束') ? '已完成' : '待参加' }}
+                </span>
+              </div>
+              <p><van-icon name="calendar-o" />{{ formatTime(event.event_start_time) }}</p>
+              <p><van-icon name="location-o" />{{ event.event_address }}</p>
             </div>
-            <p><van-icon name="calendar-o" />{{ formatTime(event.event_start_time) }}</p>
-            <p><van-icon name="location-o" />{{ event.event_address }}</p>
-          </div>
-        </button>
+          </button>
+          <template #right>
+            <button
+              type="button"
+              class="swipe-cancel-btn"
+              @click="handleCancel(event)"
+            >
+              {{ cancellingIds.has(event.id) ? '取消中' : '取消报名' }}
+            </button>
+          </template>
+        </van-swipe-cell>
       </div>
 
       <div v-else class="empty-state">
@@ -100,13 +128,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import dayjs from 'dayjs'
+import { showConfirmDialog } from 'vant'
 
 import { useActivityStore } from '@/stores/activity'
 import { useUserStore } from '@/stores/user'
+import type { EventItem } from '@/types/event'
 
 type ListType = 'joined'
 
@@ -147,12 +177,52 @@ const greeting = computed(() => {
   return '晚上好 🌙'
 })
 
+const cancellingIds = ref(new Set<number>())
+const refreshing = ref(false)
+
 onMounted(() => {
   if (!userStore.profile) {
     userStore.fetchProfile()
   }
   activityStore.fetchMyRegistrations({ page_size: 3 })
 })
+
+const refreshActivities = async () => {
+  refreshing.value = true
+  try {
+    await activityStore.fetchMyRegistrations({ page_size: 3 })
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    refreshing.value = false
+  }
+}
+
+const handleCancel = async (event: EventItem) => {
+  try {
+    await showConfirmDialog({
+      title: '取消报名',
+      message: `确定要取消「${event.title}」的报名吗？`,
+      confirmButtonText: '确定取消',
+      cancelButtonText: '再想想',
+      confirmButtonColor: '#ef4444',
+    })
+  } catch {
+    // 用户取消
+    return
+  }
+
+  cancellingIds.value = new Set([...cancellingIds.value, event.id])
+  try {
+    await activityStore.cancelEventRegistration(event.id)
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    const next = new Set(cancellingIds.value)
+    next.delete(event.id)
+    cancellingIds.value = next
+  }
+}
 
 const openSettings = () => {
   router.push({ name: 'mine-settings' })
@@ -421,6 +491,12 @@ const openActivityList = (type: ListType) => {
   justify-content: space-between;
   gap: 12px;
 
+  &__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   span {
     color: #6b7280;
     font-size: 13px;
@@ -428,9 +504,50 @@ const openActivityList = (type: ListType) => {
   }
 }
 
+.refresh-btn {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+
+  &:active {
+    color: #2f80ff;
+    background: rgba(47, 128, 255, 0.08);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+
+  &--spinning .van-icon {
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .activity-list {
   display: grid;
   gap: 10px;
+}
+
+// ── SwipeCell 覆盖 ──
+
+:deep(.van-swipe-cell) {
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+:deep(.van-swipe-cell__wrapper) {
+  border-radius: 14px;
 }
 
 .activity-item {
@@ -456,6 +573,29 @@ const openActivityList = (type: ListType) => {
     object-fit: cover;
     background: #eef1f4;
     border-radius: 14px;
+  }
+}
+
+// ── 右滑取消按钮 ──
+
+.swipe-cancel-btn {
+  display: flex;
+  width: 80px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: 0;
+  border-radius: 0 14px 14px 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+
+  &:active {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   }
 }
 
@@ -494,14 +634,24 @@ const openActivityList = (type: ListType) => {
     letter-spacing: 0;
   }
 
-  span {
-    padding: 4px 7px;
-    color: #047857;
+  .tag-upcoming {
+    padding: 4px 8px;
+    color: #2563eb;
     font-size: 11px;
     font-weight: 800;
     line-height: 1;
-    background: #ecfdf5;
-    border-radius: 7px;
+    background: #eff6ff;
+    border-radius: 6px;
+  }
+
+  .tag-finished {
+    padding: 4px 8px;
+    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    background: #f3f4f6;
+    border-radius: 6px;
   }
 }
 

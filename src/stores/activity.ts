@@ -38,7 +38,7 @@ export const useActivityStore = defineStore('activity', {
       if (!this.joinedEventIds.includes(id)) {
         this.joinedEventIds.push(id)
       }
-      showToast('报名成功')
+      showToast({ message: '报名成功' })
     },
 
     /** 取消报名 */
@@ -47,7 +47,7 @@ export const useActivityStore = defineStore('activity', {
       this.joinedEventIds = this.joinedEventIds.filter((eid) => eid !== id)
       this.myEvents = this.myEvents.filter((e) => e.id !== id)
       this.myEventsTotal = Math.max(0, this.myEventsTotal - 1)
-      showToast('已取消报名')
+      showToast({ message: '已取消报名' })
     },
 
     /** 检查是否已报名（同步方法，用于 UI 快速判断） */

@@ -261,13 +261,13 @@ const switchAuthMode = (mode: AuthMode) => {
 const sendCode = async (purpose: SmsPurpose) => {
   const mobile = getSmsMobile(purpose)
   if (!isValidMobile(mobile)) {
-    showToast('请输入正确的手机号')
+    showToast({ message: '请输入正确的手机号' })
     return
   }
 
   try {
     await sendSms({ phone_number: mobile, purpose })
-    showToast('验证码已发送')
+    showToast({ message: '验证码已发送' })
 
     // 开启倒计时
     countdown.value = 60
@@ -288,22 +288,22 @@ const sendCode = async (purpose: SmsPurpose) => {
 
 const handlePasswordLogin = async () => {
   if (!passwordForm.phone) {
-    showToast('请输入手机号')
+    showToast({ message: '请输入手机号' })
     return
   }
 
   if (!isValidMobile(passwordForm.phone)) {
-    showToast('请输入正确的手机号')
+    showToast({ message: '请输入正确的手机号' })
     return
   }
 
   if (!passwordForm.password) {
-    showToast('请输入密码')
+    showToast({ message: '请输入密码' })
     return
   }
 
   if (passwordForm.password.length < 6) {
-    showToast('密码至少 6 位')
+    showToast({ message: '密码至少 6 位' })
     return
   }
 
@@ -325,12 +325,12 @@ const handlePasswordLogin = async () => {
 
 const handleSmsLogin = async () => {
   if (!isValidMobile(smsForm.mobile)) {
-    showToast('请输入正确的手机号')
+    showToast({ message: '请输入正确的手机号' })
     return
   }
 
   if (!/^\d{4}$/.test(smsForm.code)) {
-    showToast('请输入 4 位验证码')
+    showToast({ message: '请输入 4 位验证码' })
     return
   }
 
@@ -359,27 +359,27 @@ const handleSmsLogin = async () => {
 
 const handleRegister = async () => {
   if (!isValidMobile(registerForm.mobile)) {
-    showToast('请输入正确的手机号')
+    showToast({ message: '请输入正确的手机号' })
     return
   }
 
   if (!/^\d{4}$/.test(registerForm.code)) {
-    showToast('请输入 4 位验证码')
+    showToast({ message: '请输入 4 位验证码' })
     return
   }
 
   if (!registerForm.password) {
-    showToast('请设置密码')
+    showToast({ message: '请设置密码' })
     return
   }
 
   if (registerForm.password.length < 6) {
-    showToast('密码至少 6 位')
+    showToast({ message: '密码至少 6 位' })
     return
   }
 
   if (registerForm.confirmPassword !== registerForm.password) {
-    showToast('两次输入的密码不一致')
+    showToast({ message: '两次输入的密码不一致' })
     return
   }
 

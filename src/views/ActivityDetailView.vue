@@ -99,14 +99,49 @@
           </header>
 
           <form class="register-form" @submit.prevent="submitRegister">
-            <label>
-              <span>姓名</span>
-              <input v-model.trim="registerForm.name" type="text" placeholder="请输入姓名" />
-            </label>
-            <div class="readonly-field">
-              <span>手机号</span>
-              <strong>{{ userMobile }}</strong>
+            <!-- 用户提示 -->
+            <div class="sync-notice" v-if="event.user_info && event.user_info.length > 0">
+              <van-icon name="info-o" size="14" />
+              <span>填写的信息将在报名成功后自动同步至您的个人资料</span>
             </div>
+
+            <!-- 全部字段由 user_info 动态渲染 -->
+            <template v-if="event.user_info && event.user_info.length > 0">
+              <template v-for="field in event.user_info" :key="field.id">
+                <!-- 手机号：只读 -->
+                <div v-if="field.code === 'phone_number'" class="readonly-field">
+                  <span>{{ field.name }}</span>
+                  <strong>{{ userMobile }}</strong>
+                </div>
+
+                <!-- 行业：选择器 -->
+                <div v-else-if="field.code === 'Industry'" class="choice-field">
+                  <span>{{ field.name }}</span>
+                  <button
+                    type="button"
+                    class="selector-button"
+                    :disabled="industryList.length === 0"
+                    @click="showIndustryPicker = true"
+                  >
+                    <span :class="{ placeholder: !selectedIndustryName }">
+                      {{ selectedIndustryName || `请选择${field.name}` }}
+                    </span>
+                    <van-icon name="arrow" size="14" />
+                  </button>
+                </div>
+
+                <!-- 其余：文本输入框 -->
+                <label v-else>
+                  <span>{{ field.name }}</span>
+                  <input
+                    v-model.trim="dynamicFields[field.code]"
+                    type="text"
+                    :placeholder="`请输入${field.name}`"
+                  />
+                </label>
+              </template>
+            </template>
+
             <label v-if="event?.need_invite_code === 1">
               <span>邀请码</span>
               <input v-model.trim="registerForm.invite_code" type="text" placeholder="请输入邀请码" />
@@ -117,6 +152,47 @@
             </button>
           </form>
         </section>
+
+        <!-- 行业选择器 Popup -->
+        <van-popup
+          v-model:show="showIndustryPicker"
+          position="bottom"
+          round
+          :close-on-click-overlay="true"
+          :style="{ borderRadius: '20px 20px 0 0' }"
+        >
+          <div class="industry-picker">
+            <header class="industry-picker__header">
+              <div>
+                <h3>选择行业</h3>
+                <p>选择你所在的行业领域</p>
+              </div>
+              <button type="button" class="industry-picker__close" @click="showIndustryPicker = false">
+                <van-icon name="cross" size="18" />
+              </button>
+            </header>
+
+            <div class="industry-picker__grid">
+              <button
+                v-for="item in industryList"
+                :key="item.id"
+                type="button"
+                class="industry-chip"
+                :class="{ 'industry-chip--active': selectedIndustryId === item.id }"
+                @click="selectedIndustryId = item.id; showIndustryPicker = false"
+              >
+                <span>{{ item.industry_name }}</span>
+                <van-icon v-if="selectedIndustryId === item.id" name="success" size="14" />
+              </button>
+            </div>
+
+            <div class="industry-picker__footer">
+              <button type="button" class="industry-clear-btn" @click="selectedIndustryId = null; showIndustryPicker = false">
+                清除选择
+              </button>
+            </div>
+          </div>
+        </van-popup>
       </div>
     </teleport>
   </main>
@@ -137,9 +213,13 @@ import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { getEventDetail, getRegistrationStatus } from '@/api/event'
+import { getIndustries } from '@/api/industry'
+import { updateUser } from '@/api/user'
 import { useActivityStore } from '@/stores/activity'
 import { useUserStore } from '@/stores/user'
 import type { EventDetail } from '@/types/event'
+import type { IndustryItem } from '@/types/industry'
+import type { UpdateUserParams } from '@/types/user'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,9 +237,49 @@ const submitting = ref(false)
 const eventId = computed(() => Number(route.params.id))
 
 const registerForm = reactive({
-  name: '',
   invite_code: '',
 })
+
+// ── 动态文本字段（key = user_info.code，value = 用户输入）──
+const dynamicFields = reactive<Record<string, string>>({})
+
+// ── 行业选择器 ──
+const industryList = ref<IndustryItem[]>([])
+const showIndustryPicker = ref(false)
+const selectedIndustryId = ref<number | null>(null)
+
+const selectedIndustryName = computed(() => {
+  if (selectedIndustryId.value === null) return ''
+  return industryList.value.find((i) => i.id === selectedIndustryId.value)?.industry_name || ''
+})
+
+// ── user_info.code → 用户资料字段映射 ──
+// 只映射已知的字段，未知 code 不参与同步
+const CODE_TO_PROFILE: Record<string, keyof UpdateUserParams> = {
+  name: 'name',
+  company: 'unit',
+  Department: 'department',
+  Position: 'position',
+  Industry: 'industry_id',
+}
+
+/** 从用户资料中获取 code 对应的预填值 */
+const getProfileValue = (code: string): string => {
+  const p = userStore.profile
+  if (!p) return ''
+  switch (code) {
+    case 'name':
+      return p.name || ''
+    case 'company':
+      return p.unit || ''
+    case 'Department':
+      return p.department || ''
+    case 'Position':
+      return p.position || ''
+    default:
+      return ''
+  }
+}
 
 const goBack = () => router.back()
 
@@ -222,6 +342,14 @@ const fetchDetail = async () => {
 
 onMounted(() => {
   fetchDetail()
+  // 预加载行业列表（报名表单可能用到）
+  getIndustries(1)
+    .then((res) => {
+      industryList.value = res.data || []
+    })
+    .catch(() => {
+      // 静默失败，行业选择器将显示为空
+    })
 })
 
 // ── Registration ──
@@ -229,8 +357,24 @@ onMounted(() => {
 const openRegisterForm = () => {
   if (actionDisabled.value) return
   formError.value = ''
-  registerForm.name = userStore.profile?.name || userStore.profile?.nickname || ''
   registerForm.invite_code = ''
+
+  // 清空动态字段并预填用户资料
+  Object.keys(dynamicFields).forEach((k) => delete dynamicFields[k])
+  selectedIndustryId.value = null
+
+  if (event.value?.user_info) {
+    for (const field of event.value.user_info) {
+      if (field.code === 'phone_number') continue // 只读，无需预填
+      if (field.code === 'Industry') {
+        selectedIndustryId.value = userStore.profile?.industry_id ?? null
+      } else {
+        // 文本字段：从已有资料预填
+        dynamicFields[field.code] = getProfileValue(field.code)
+      }
+    }
+  }
+
   formVisible.value = true
 }
 
@@ -239,7 +383,8 @@ const closeRegisterForm = () => {
 }
 
 const submitRegister = async () => {
-  if (!registerForm.name) {
+  const nameVal = dynamicFields['name'] || ''
+  if (!nameVal.trim()) {
     formError.value = '请填写姓名'
     return
   }
@@ -258,10 +403,53 @@ const submitRegister = async () => {
     )
     isRegistered.value = true
     formVisible.value = false
+    // 报名成功后同步个人资料
+    syncProfile()
   } catch {
     // 错误已由拦截器处理
   } finally {
     submitting.value = false
+  }
+}
+
+/** 将表单中修改的信息同步到用户个人资料 */
+const syncProfile = async () => {
+  const p = userStore.profile
+  if (!p || !event.value?.user_info?.length) return
+
+  const payload: UpdateUserParams = {}
+
+  for (const field of event.value.user_info) {
+    const code = field.code
+    // 手机号只读，不参与同步
+    if (code === 'phone_number') continue
+
+    const profileKey = CODE_TO_PROFILE[code]
+    if (!profileKey) continue // 未知 code 无法映射，跳过
+
+    if (code === 'Industry') {
+      const newVal = selectedIndustryId.value ?? undefined
+      if (newVal !== (p.industry_id || undefined)) {
+        payload.industry_id = newVal as UpdateUserParams['industry_id']
+      }
+    } else {
+      const newVal = (dynamicFields[code] || '').trim()
+      const oldVal = getProfileValue(code)
+      if (newVal !== oldVal) {
+        ;(payload as Record<string, unknown>)[profileKey] = newVal
+      }
+    }
+  }
+
+  if (Object.keys(payload).length === 0) return
+
+  try {
+    await updateUser(payload)
+    // 刷新 store 中的用户资料
+    await userStore.fetchProfile()
+  } catch {
+    // 同步失败不影响报名结果，静默处理
+    console.warn('个人信息同步失败', payload)
   }
 }
 </script>
@@ -769,6 +957,181 @@ const submitRegister = async () => {
     color: #6b7280;
     font-size: 14px;
     font-weight: 800;
+  }
+}
+
+// ── 同步提示 ──
+
+.sync-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #f0f7ff;
+  border-radius: 10px;
+
+  .van-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #3b82f6;
+  }
+}
+
+// ── 选择器按钮 ──
+
+.selector-button {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  transition: border-color 0.15s ease;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #111827;
+
+    &.placeholder {
+      color: #9ca3af;
+    }
+  }
+
+  .van-icon {
+    flex-shrink: 0;
+    color: #9ca3af;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+// ── 行业选择器 Popup ──
+
+.industry-picker {
+  padding: 0 0 max(16px, env(safe-area-inset-bottom));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.industry-picker__header {
+  display: flex;
+  padding: 20px 20px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  h3 {
+    margin: 0 0 4px;
+    color: #111827;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+
+  p {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 13px;
+    font-weight: 500;
+  }
+}
+
+.industry-picker__close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 0;
+  border-radius: 50%;
+  transition: background 0.15s;
+
+  &:active {
+    background: #e5e7eb;
+  }
+}
+
+.industry-picker__grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+}
+
+.industry-chip {
+  display: inline-flex;
+  height: 40px;
+  padding: 0 16px;
+  align-items: center;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 600;
+  background: #f3f4f6;
+  border: 1.5px solid transparent;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &--active {
+    color: #ffffff;
+    background: #ef4444;
+    border-color: #ef4444;
+    box-shadow: 0 2px 10px rgba(239, 68, 68, 0.25);
+
+    .van-icon {
+      opacity: 1;
+    }
+  }
+
+  .van-icon {
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+}
+
+.industry-picker__footer {
+  padding: 16px 20px 0;
+}
+
+.industry-clear-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:active {
+    color: #ef4444;
   }
 }
 </style>
