@@ -19,65 +19,84 @@
       <h1>{{ event.title }}</h1>
     </section>
 
-    <section class="info-panel" aria-label="活动信息">
-      <div class="info-item">
-        <van-icon name="calendar-o" />
-        <div>
-          <span>活动时间</span>
-          <strong>{{ formatDateTime(event.event_start_time) }} - {{ formatDateTime(event.event_end_time) }}</strong>
-        </div>
-      </div>
-      <div class="info-item">
-        <van-icon name="location-o" />
-        <div>
-          <span>活动地点</span>
-          <strong>{{ event.event_address }}</strong>
-        </div>
-      </div>
-      <div class="info-item">
-        <van-icon name="friends-o" />
-        <div>
-          <span>报名人数</span>
-          <strong>{{ event.current_registrants }}/{{ event.max_registrants }} 人（剩余 {{ remainSeats }}）</strong>
-        </div>
-      </div>
-      <div class="info-item">
-        <van-icon name="clock-o" />
-        <div>
-          <span>报名时间</span>
-          <strong>{{ formatDate(event.registration_start_time) }} - {{ formatDate(event.registration_end_time) }}</strong>
-        </div>
-      </div>
-    </section>
+    <!-- 自定义 Tab 栏（仅活动有详情介绍时显示） -->
+    <nav v-if="event.detail" class="detail-tab-bar">
+      <button
+        :class="{ active: detailTab === 0 }"
+        @click="detailTab = 0"
+      >活动信息</button>
+      <button
+        :class="{ active: detailTab === 1 }"
+        @click="detailTab = 1"
+      >活动详情</button>
+    </nav>
 
-    <section v-if="event.detail" class="content-block">
-      <h2>活动介绍</h2>
-      <div class="rich-content" v-html="event.detail"></div>
-    </section>
+    <!-- 活动信息 -->
+    <template v-if="detailTab === 0 || !event.detail">
+      <section class="info-panel" aria-label="活动信息">
+        <div class="info-item">
+          <van-icon name="calendar-o" />
+          <div>
+            <span>活动时间</span>
+            <strong>{{ formatDateTime(event.event_start_time) }} - {{ formatDateTime(event.event_end_time) }}</strong>
+          </div>
+        </div>
+        <div class="info-item">
+          <van-icon name="location-o" />
+          <div>
+            <span>活动地点</span>
+            <strong>{{ event.event_address }}</strong>
+          </div>
+        </div>
+        <div class="info-item">
+          <van-icon name="friends-o" />
+          <div>
+            <span>报名人数</span>
+            <strong v-if="isUnlimited">{{ event.current_registrants }} 人（不限人数）</strong>
+            <strong v-else>{{ event.current_registrants }}/{{ event.max_registrants }} 人（剩余 {{ remainSeats }}）</strong>
+          </div>
+        </div>
+        <div class="info-item">
+          <van-icon name="clock-o" />
+          <div>
+            <span>报名时间</span>
+            <strong>{{ formatDateTime(event.registration_start_time) }} - {{ formatDateTime(event.registration_end_time) }}</strong>
+          </div>
+        </div>
+      </section>
 
-    <section v-if="event.fields.length > 0" class="content-block">
-      <h2>活动领域</h2>
-      <div class="tag-list">
-        <span v-for="field in event.fields" :key="field.field_id">{{ field.field_name }}</span>
-      </div>
-    </section>
+      <section v-if="event.fields.length > 0" class="content-block">
+        <h2>活动领域</h2>
+        <div class="tag-list">
+          <span v-for="field in event.fields" :key="field.field_id">{{ field.field_name }}</span>
+        </div>
+      </section>
 
-    <section v-if="event.images.length > 0" class="content-block">
-      <h2>活动图片</h2>
-      <div class="image-gallery">
-        <img
-          v-for="img in event.images"
-          :key="img.image_id"
-          :src="img.url"
-          alt="活动图片"
-        />
-      </div>
-    </section>
+      <section v-if="event.images.length > 0" class="content-block">
+        <h2>活动图片</h2>
+        <div class="image-gallery">
+          <img
+            v-for="img in event.images"
+            :key="img.image_id"
+            :src="img.url"
+            alt="活动图片"
+          />
+        </div>
+      </section>
+    </template>
+
+    <!-- 活动详情（富文本） -->
+    <template v-if="event.detail && detailTab === 1">
+      <section class="content-block">
+        <div class="rich-content" v-html="event.detail"></div>
+      </section>
+    </template>
 
     <footer class="bottom-bar">
       <div>
         <span>活动名额</span>
-        <strong>{{ event.current_registrants }}/{{ event.max_registrants }}</strong>
+        <strong v-if="isUnlimited">不限</strong>
+        <strong v-else>{{ event.current_registrants }}/{{ event.max_registrants }}</strong>
       </div>
       <button type="button" :disabled="actionDisabled" @click="openRegisterForm">
         {{ actionText }}
@@ -107,15 +126,15 @@
 
             <!-- 全部字段由 user_info 动态渲染 -->
             <template v-if="event.user_info && event.user_info.length > 0">
-              <template v-for="field in event.user_info" :key="field.id">
+              <template v-for="field in event.user_info" :key="field.user_info_id">
                 <!-- 手机号：只读 -->
-                <div v-if="field.code === 'phone_number'" class="readonly-field">
+                <div v-if="isPhoneField(field.code)" class="readonly-field">
                   <span>{{ field.name }}</span>
                   <strong>{{ userMobile }}</strong>
                 </div>
 
                 <!-- 行业：选择器 -->
-                <div v-else-if="field.code === 'Industry'" class="choice-field">
+                <div v-else-if="isIndustryField(field.code)" class="choice-field">
                   <span>{{ field.name }}</span>
                   <button
                     type="button"
@@ -138,6 +157,9 @@
                     type="text"
                     :placeholder="`请输入${field.name}`"
                   />
+                  <p v-if="field.code === 'name' && !dynamicFields['name']" class="field-hint">
+                    填写后将在报名成功时自动同步至个人资料，后续报名无需重复填写
+                  </p>
                 </label>
               </template>
             </template>
@@ -234,6 +256,10 @@ const formVisible = ref(false)
 const formError = ref('')
 const submitting = ref(false)
 
+// ── Tab 切换（活动信息 / 活动详情）──
+
+const detailTab = ref(0)
+
 const eventId = computed(() => Number(route.params.id))
 
 const registerForm = reactive({
@@ -253,33 +279,25 @@ const selectedIndustryName = computed(() => {
   return industryList.value.find((i) => i.id === selectedIndustryId.value)?.industry_name || ''
 })
 
-// ── user_info.code → 用户资料字段映射 ──
-// 只映射已知的字段，未知 code 不参与同步
-const CODE_TO_PROFILE: Record<string, keyof UpdateUserParams> = {
-  name: 'name',
-  company: 'unit',
-  Department: 'department',
-  Position: 'position',
-  Industry: 'industry_id',
-}
+// ── user_info.code 即为用户资料对象的字段名，直接从 Pinia 取值 ──
 
 /** 从用户资料中获取 code 对应的预填值 */
 const getProfileValue = (code: string): string => {
-  const p = userStore.profile
+  const p = userStore.profile as Record<string, unknown> | null
   if (!p) return ''
-  switch (code) {
-    case 'name':
-      return p.name || ''
-    case 'company':
-      return p.unit || ''
-    case 'Department':
-      return p.department || ''
-    case 'Position':
-      return p.position || ''
-    default:
-      return ''
-  }
+  const val = p[code]
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  return ''
 }
+
+/** 判断是否为手机号字段（只读展示） */
+const isPhoneField = (code: string) =>
+  ['phone_number', 'phone', 'mobile'].includes(code)
+
+/** 判断是否为行业字段（选择器） */
+const isIndustryField = (code: string) =>
+  ['Industry', 'industry', 'industry_id'].includes(code)
 
 const goBack = () => router.back()
 
@@ -303,20 +321,24 @@ const userMobile = computed(() => userStore.profile?.phone_number || '未绑定�
 
 const remainSeats = computed(() => {
   if (!event.value) return 0
+  if (event.value.remaining_quota === -1) return Infinity
   return Math.max(0, event.value.max_registrants - event.value.current_registrants)
 })
+
+/** 是否不限制报名人数 */
+const isUnlimited = computed(() => event.value?.remaining_quota === -1)
 
 const actionText = computed(() => {
   if (!event.value) return '立即报名'
   if (event.value.status.includes('结束')) return '已结束'
   if (isRegistered.value) return '已报名'
-  if (event.value.remaining_quota <= 0) return '名额已满'
+  if (!isUnlimited.value && event.value.remaining_quota <= 0) return '名额已满'
   return '立即报名'
 })
 
 const actionDisabled = computed(() => {
   if (!event.value) return true
-  return event.value.status.includes('结束') || isRegistered.value || event.value.remaining_quota <= 0
+  return event.value.status.includes('结束') || isRegistered.value || (!isUnlimited.value && event.value.remaining_quota <= 0)
 })
 
 // ── Fetch ──
@@ -340,21 +362,24 @@ const fetchDetail = async () => {
   }
 }
 
-onMounted(() => {
-  fetchDetail()
-  // 预加载行业列表（报名表单可能用到）
-  getIndustries(1)
-    .then((res) => {
-      industryList.value = res.data || []
-    })
-    .catch(() => {
-      // 静默失败，行业选择器将显示为空
-    })
+onMounted(async () => {
+  // 并行加载：活动详情、用户资料、行业列表
+  await Promise.all([
+    fetchDetail(),
+    userStore.profile ? Promise.resolve() : userStore.fetchProfile().catch(() => {}),
+    getIndustries(1)
+      .then((res) => {
+        industryList.value = res.data || []
+      })
+      .catch(() => {
+        // 静默失败，行业选择器将显示为空
+      }),
+  ])
 })
 
 // ── Registration ──
 
-const openRegisterForm = () => {
+const openRegisterForm = async () => {
   if (actionDisabled.value) return
   formError.value = ''
   registerForm.invite_code = ''
@@ -363,10 +388,15 @@ const openRegisterForm = () => {
   Object.keys(dynamicFields).forEach((k) => delete dynamicFields[k])
   selectedIndustryId.value = null
 
+  // 确保用户资料已加载（首次点击报名时兜底）
+  if (!userStore.profile) {
+    await userStore.fetchProfile().catch(() => {})
+  }
+
   if (event.value?.user_info) {
     for (const field of event.value.user_info) {
-      if (field.code === 'phone_number') continue // 只读，无需预填
-      if (field.code === 'Industry') {
+      if (isPhoneField(field.code)) continue // 只读，无需预填
+      if (isIndustryField(field.code)) {
         selectedIndustryId.value = userStore.profile?.industry_id ?? null
       } else {
         // 文本字段：从已有资料预填
@@ -383,10 +413,25 @@ const closeRegisterForm = () => {
 }
 
 const submitRegister = async () => {
-  const nameVal = dynamicFields['name'] || ''
-  if (!nameVal.trim()) {
-    formError.value = '请填写姓名'
-    return
+  // ── 校验所有 user_info 字段是否已填写 ──
+  if (event.value?.user_info) {
+    for (const field of event.value.user_info) {
+      const code = field.code
+      if (isPhoneField(code)) continue // 只读，无需校验
+
+      if (isIndustryField(code)) {
+        if (selectedIndustryId.value === null) {
+          formError.value = `请选择${field.name}`
+          return
+        }
+      } else {
+        const val = (dynamicFields[code] || '').trim()
+        if (!val) {
+          formError.value = `请填写${field.name}`
+          return
+        }
+      }
+    }
   }
 
   if (event.value?.need_invite_code === 1 && !registerForm.invite_code) {
@@ -397,14 +442,48 @@ const submitRegister = async () => {
   submitting.value = true
   formError.value = ''
   try {
-    await activityStore.joinEvent(
-      eventId.value,
-      event.value?.need_invite_code === 1 ? registerForm.invite_code : undefined,
-    )
+    // 1. 先构建报名请求体（对比同步前的旧 profile，捕获所有变化）
+    const registrationParams: Record<string, unknown> = {}
+
+    if (event.value?.need_invite_code === 1) {
+      registrationParams.invite_code = registerForm.invite_code
+    }
+
+    if (event.value?.user_info) {
+      for (const field of event.value.user_info) {
+        const code = field.code
+        if (isPhoneField(code)) continue
+
+        if (isIndustryField(code)) {
+          const newVal = selectedIndustryId.value
+          const oldVal = userStore.profile?.industry_id ?? null
+          if (newVal !== oldVal) {
+            registrationParams.industry_id = String(newVal)
+          }
+        } else {
+          const newVal = (dynamicFields[code] || '').trim()
+          const oldVal = getProfileValue(code)
+          if (newVal !== oldVal) {
+            registrationParams[code] = newVal
+          }
+        }
+      }
+    }
+
+    // 2. 再同步个人资料（这步会刷新 profile，但不影响已构建好的请求体）
+    await syncProfile()
+
+    // 3. 调用报名接口
+    await activityStore.joinEvent(eventId.value, registrationParams)
     isRegistered.value = true
+    // 立即更新本地已报名人数，无需等待接口刷新
+    if (event.value) {
+      event.value.current_registrants += 1
+      if (event.value.remaining_quota !== -1) {
+        event.value.remaining_quota -= 1
+      }
+    }
     formVisible.value = false
-    // 报名成功后同步个人资料
-    syncProfile()
   } catch {
     // 错误已由拦截器处理
   } finally {
@@ -417,26 +496,23 @@ const syncProfile = async () => {
   const p = userStore.profile
   if (!p || !event.value?.user_info?.length) return
 
-  const payload: UpdateUserParams = {}
+  const payload: Record<string, unknown> = {}
 
   for (const field of event.value.user_info) {
     const code = field.code
     // 手机号只读，不参与同步
-    if (code === 'phone_number') continue
+    if (isPhoneField(code)) continue
 
-    const profileKey = CODE_TO_PROFILE[code]
-    if (!profileKey) continue // 未知 code 无法映射，跳过
-
-    if (code === 'Industry') {
+    if (isIndustryField(code)) {
       const newVal = selectedIndustryId.value ?? undefined
       if (newVal !== (p.industry_id || undefined)) {
-        payload.industry_id = newVal as UpdateUserParams['industry_id']
+        payload.industry_id = newVal
       }
     } else {
       const newVal = (dynamicFields[code] || '').trim()
       const oldVal = getProfileValue(code)
       if (newVal !== oldVal) {
-        ;(payload as Record<string, unknown>)[profileKey] = newVal
+        payload[code] = newVal
       }
     }
   }
@@ -444,7 +520,7 @@ const syncProfile = async () => {
   if (Object.keys(payload).length === 0) return
 
   try {
-    await updateUser(payload)
+    await updateUser(payload as UpdateUserParams)
     // 刷新 store 中的用户资料
     await userStore.fetchProfile()
   } catch {
@@ -619,6 +695,37 @@ const syncProfile = async () => {
     line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+// ── 自定义 Tab 栏 ──
+
+.detail-tab-bar {
+  position: sticky;
+  top: 58px;
+  z-index: 15;
+  display: flex;
+  margin: 12px 0 0;
+  background: rgba(247, 248, 250, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  button {
+    flex: 1;
+    padding: 12px 0 10px;
+    color: #9ca3af;
+    font-size: 14px;
+    font-weight: 600;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+
+    &.active {
+      color: #111827;
+      font-weight: 700;
+      border-bottom-color: #111827;
+    }
   }
 }
 
@@ -889,6 +996,13 @@ const syncProfile = async () => {
       border-color: #111827;
     }
   }
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  color: #9ca3af;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .form-error {

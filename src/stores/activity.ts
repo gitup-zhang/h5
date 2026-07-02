@@ -32,9 +32,9 @@ export const useActivityStore = defineStore('activity', {
       this.joinedEventIds = res.data.list.map((e) => e.id)
     },
 
-    /** 报名活动 */
-    async joinEvent(id: number, invite_code?: string) {
-      await registerForEvent(id, { invite_code: invite_code || '' })
+    /** 报名活动（params 的 key 由活动详情的 user_info[].code 动态决定） */
+    async joinEvent(id: number, params?: Record<string, unknown>) {
+      await registerForEvent(id, params)
       if (!this.joinedEventIds.includes(id)) {
         this.joinedEventIds.push(id)
       }

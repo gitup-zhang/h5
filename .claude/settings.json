@@ -4,7 +4,8 @@
       "Bash(rm -rf dist node_modules/.vite .vite)",
       "Bash(npx vite *)",
       "Bash(python3 -c ' *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git checkout *)"
     ]
   }
 }

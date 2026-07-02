@@ -23,9 +23,6 @@
         <div class="profile-main">
           <div class="name-row">
             <h2>{{ displayName }}</h2>
-            <span v-if="profile?.gender" class="gender-badge" :class="genderBadgeClass">
-              {{ userStore.displayGender }}
-            </span>
           </div>
           <p>{{ userStore.displayMobile }}</p>
           <span class="role-tag">{{ userStore.displayRole }}</span>
@@ -83,23 +80,6 @@
               placeholder="请输入姓名"
               autocomplete="name"
             />
-          </label>
-
-          <!-- 性别 -->
-          <label>
-            <span>性别</span>
-            <div class="gender-toggle">
-              <button
-                v-for="opt in genderOptions"
-                :key="opt.value"
-                type="button"
-                class="gender-option"
-                :class="{ selected: editForm.gender === opt.value }"
-                @click="editForm.gender = opt.value"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
           </label>
 
           <!-- 单位 -->
@@ -228,44 +208,6 @@
         </form>
       </section>
 
-      <!-- ── 修改手机号 ── -->
-      <section class="settings-card">
-        <h2>修改手机号</h2>
-        <form class="settings-form" @submit.prevent="submitChangePhone">
-          <label>
-            <span>新手机号</span>
-            <input
-              v-model.trim="phoneForm.newPhone"
-              type="tel"
-              maxlength="11"
-              placeholder="请输入新手机号"
-              autocomplete="tel"
-            />
-          </label>
-
-          <label>
-            <span>验证码</span>
-            <div class="code-row">
-              <input
-                v-model.trim="phoneForm.code"
-                type="tel"
-                inputmode="numeric"
-                maxlength="4"
-                placeholder="4位验证码"
-                autocomplete="one-time-code"
-              />
-              <button type="button" :disabled="countdown > 0 || submitting" @click="sendPhoneCode">
-                {{ codeButtonText }}
-              </button>
-            </div>
-          </label>
-
-          <p v-if="phoneError" class="form-error">{{ phoneError }}</p>
-          <button type="submit" class="primary-button" :disabled="submitting">
-            {{ submitting ? '保存中...' : '修改手机号' }}
-          </button>
-        </form>
-      </section>
     </template>
 
     <!-- ── 退出登录 ── -->
@@ -374,11 +316,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { showConfirmDialog, showToast } from 'vant'
-import { sendSms, verifySms } from '@/api/user'
+import { showConfirmDialog } from 'vant'
+
 import { getIndustries } from '@/api/industry'
 import { getFields } from '@/api/field'
 import { useUserStore } from '@/stores/user'
@@ -400,17 +342,9 @@ const fieldList = ref<FieldItem[]>([])
 const showIndustryPicker = ref(false)
 const showFieldPicker = ref(false)
 
-// ─── 性别选项 ──────────────────────────────────────
-const genderOptions = [
-  { label: '男', value: 'M' },
-  { label: '女', value: 'F' },
-  { label: '保密', value: 'U' },
-]
-
 // ─── 编辑表单 ──────────────────────────────────────
 const editForm = reactive({
   name: '',
-  gender: '',
   unit: '',
   department: '',
   position: '',
@@ -429,29 +363,10 @@ const passwordForm = reactive({
 
 const passwordError = ref('')
 
-// ─── 手机号表单 ────────────────────────────────────
-const phoneForm = reactive({
-  newPhone: '',
-  code: '',
-})
-
-const phoneError = ref('')
-const countdown = ref(0)
-let timer: number | undefined
 
 // ─── 计算属性 ──────────────────────────────────────
 const displayName = computed(() => profile.value?.name || profile.value?.nickname || '未设置')
 
-const genderBadgeClass = computed(() => {
-  const code = profile.value?.gender_code
-  if (code === 'M') return 'gender-badge--male'
-  if (code === 'F') return 'gender-badge--female'
-  return ''
-})
-
-const codeButtonText = computed(() =>
-  countdown.value > 0 ? `${countdown.value}s` : '获取验证码',
-)
 
 const selectedIndustryName = computed(() => {
   if (editForm.industry_id === null) return ''
@@ -480,16 +395,12 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(() => {
-  window.clearInterval(timer)
-})
 
 // ─── 表单填充 ──────────────────────────────────────
 const populateForm = () => {
   const p = userStore.profile
   if (!p) return
   editForm.name = p.name || ''
-  editForm.gender = p.gender_code || ''
   editForm.unit = p.unit || ''
   editForm.department = p.department || ''
   editForm.position = p.position || ''
@@ -502,7 +413,6 @@ const populateForm = () => {
 
 const resetForm = () => {
   editForm.name = ''
-  editForm.gender = ''
   editForm.unit = ''
   editForm.department = ''
   editForm.position = ''
@@ -513,11 +423,6 @@ const resetForm = () => {
   passwordForm.newPassword = ''
   passwordForm.confirmPassword = ''
   passwordError.value = ''
-  phoneForm.newPhone = ''
-  phoneForm.code = ''
-  phoneError.value = ''
-  countdown.value = 0
-  window.clearInterval(timer)
 }
 
 // ─── 编辑切换 ──────────────────────────────────────
@@ -567,9 +472,6 @@ const submitProfile = async () => {
 
   const name = editForm.name.trim()
   if (name !== (p.name || '')) payload.name = name
-
-  const gender = editForm.gender
-  if (gender !== (p.gender_code || '')) payload.gender = gender
 
   const unit = editForm.unit.trim()
   if (unit !== (p.unit || '')) payload.unit = unit
@@ -643,69 +545,6 @@ const submitChangePassword = async () => {
     passwordForm.oldPassword = ''
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
-  } catch {
-    // 错误已由拦截器处理
-  } finally {
-    submitting.value = false
-  }
-}
-
-// ─── 修改手机号 ────────────────────────────────────
-const sendPhoneCode = async () => {
-  const phone = phoneForm.newPhone.trim()
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    phoneError.value = '请输入正确的手机号'
-    return
-  }
-
-  phoneError.value = ''
-  try {
-    await sendSms({ phone_number: phone, purpose: 'CHANGE_PASSWORD' })
-    showToast({ message: '验证码已发送' })
-
-    countdown.value = 60
-    window.clearInterval(timer)
-    timer = window.setInterval(() => {
-      countdown.value -= 1
-      if (countdown.value <= 0) {
-        window.clearInterval(timer)
-        timer = undefined
-      }
-    }, 1000)
-  } catch {
-    // 错误已由拦截器处理
-  }
-}
-
-const submitChangePhone = async () => {
-  const phone = phoneForm.newPhone.trim()
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    phoneError.value = '请输入正确的手机号'
-    return
-  }
-
-  if (!/^\d{4}$/.test(phoneForm.code)) {
-    phoneError.value = '请填写 4 位验证码'
-    return
-  }
-
-  submitting.value = true
-  phoneError.value = ''
-  try {
-    const verifyRes = await verifySms({
-      phone_number: phone,
-      code: phoneForm.code,
-      purpose: 'CHANGE_PASSWORD',
-    })
-    await userStore.changePhone({
-      phone_number: phone,
-      verify_token: verifyRes.data.verify_token,
-    })
-    showToast({ message: '手机号修改成功' })
-    phoneForm.newPhone = ''
-    phoneForm.code = ''
-    countdown.value = 0
-    window.clearInterval(timer)
   } catch {
     // 错误已由拦截器处理
   } finally {
@@ -865,28 +704,6 @@ const goBack = () => router.back()
   }
 }
 
-.gender-badge {
-  display: inline-flex;
-  flex-shrink: 0;
-  padding: 2px 8px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
-  background: #f3f4f6;
-  border-radius: 6px;
-
-  &--male {
-    color: #2563eb;
-    background: #eff6ff;
-  }
-
-  &--female {
-    color: #db2777;
-    background: #fdf2f8;
-  }
-}
-
 .role-tag {
   display: inline-flex;
   margin-top: 9px;
@@ -1001,35 +818,6 @@ const goBack = () => router.back()
   }
 }
 
-// ── 性別切换 ──
-
-.gender-toggle {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.gender-option {
-  height: 40px;
-  color: #4b5563;
-  font-size: 14px;
-  font-weight: 700;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  transition: all 0.15s ease;
-
-  &.selected {
-    color: #ffffff;
-    background: #111827;
-    border-color: #111827;
-  }
-
-  &:active {
-    opacity: 0.8;
-  }
-}
-
 // ── 选择器按钮（行业 & 领域） ──
 
 .selector-button {
@@ -1126,28 +914,6 @@ const goBack = () => router.back()
   strong {
     color: #111827;
     font-weight: 900;
-  }
-}
-
-// ── 验证码 ──
-
-.code-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px;
-  gap: 8px;
-
-  button {
-    height: 44px;
-    color: #111827;
-    font-size: 13px;
-    font-weight: 900;
-    background: #f3f4f6;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-
-    &:disabled {
-      color: #9ca3af;
-    }
   }
 }
 

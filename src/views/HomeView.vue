@@ -69,7 +69,6 @@
 
     <!-- Normal mode -->
     <template v-else>
-    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
     <section class="top-bar" aria-label="搜索活动">
       <div class="search-box" @click="openSearch">
         <van-icon name="search" />
@@ -141,7 +140,7 @@
     <section class="upcoming-section" aria-labelledby="upcoming-title">
       <div class="section-heading">
         <h2 id="upcoming-title">即将开始</h2>
-        <button v-if="upcomingEvents.length > 0" type="button" @click="showMoreActivities">查看更多 <van-icon name="arrow" /></button>
+        <button v-if="upcomingEvents.length > 2" type="button" @click="showMoreActivities">查看更多 <van-icon name="arrow" /></button>
       </div>
 
       <div v-if="loading" class="upcoming-list">
@@ -166,7 +165,7 @@
       </div>
       <div v-if="!loading" class="upcoming-list">
         <article
-          v-for="event in upcomingEvents"
+          v-for="event in upcomingEventsPreview"
           :key="event.id"
           class="upcoming-card"
           @click="openActivity(event.id)"
@@ -189,7 +188,7 @@
           </div>
         </article>
       </div>
-      <div v-if="!loading && upcomingEvents.length === 0" class="empty-state">
+      <div v-if="!loading && upcomingEventsPreview.length === 0" class="empty-state">
         <van-icon name="calendar-o" size="32" />
         <p>暂无即将开始的活动</p>
       </div>
@@ -199,7 +198,6 @@
       <van-tabbar-item replace to="/" icon="home-o">首页</van-tabbar-item>
       <van-tabbar-item replace to="/mine" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
-    </van-pull-refresh>
     </template>
   </main>
 </template>
@@ -229,9 +227,10 @@ const upcomingEvents = ref<EventItem[]>([])
 
 /** Banner 最多展示 3 个 */
 const bannerEvents = computed(() => inProgressEvents.value.slice(0, 3))
+/** 即将开始最多展示 2 个 */
+const upcomingEventsPreview = computed(() => upcomingEvents.value.slice(0, 2))
 const searchLoading = ref(false)
 const loading = ref(false)
-const refreshing = ref(false)
 
 const fetchHomeData = async () => {
   loading.value = true
@@ -249,9 +248,9 @@ const fetchHomeData = async () => {
   }
 }
 
-// ── 下拉刷新 ──
+// ── 静默刷新 ──
 
-const onRefresh = async () => {
+const silentRefresh = async () => {
   try {
     const [inProgressRes, upcomingRes] = await Promise.all([
       getEventList({ event_status: 'InProgress', page_size: 5 }),
@@ -259,7 +258,6 @@ const onRefresh = async () => {
     ])
     inProgressEvents.value = inProgressRes.data.list
     upcomingEvents.value = upcomingRes.data.list
-    // 重置 banner
     activeBanner.value = 0
     teardownBannerScroll()
     if (bannerEvents.value.length > 0) {
@@ -267,8 +265,6 @@ const onRefresh = async () => {
     }
   } catch {
     // 错误已由拦截器处理
-  } finally {
-    refreshing.value = false
   }
 }
 
@@ -422,8 +418,9 @@ onMounted(() => {
   messageStore.fetchUnreadCount()
 })
 
-// Keep-alive: 返回首页时只轻量刷新未读计数，不重新拉取活动数据
+// Keep-alive: 返回首页时静默刷新数据
 onActivated(() => {
+  silentRefresh()
   messageStore.fetchUnreadCount()
 })
 
@@ -1081,9 +1078,6 @@ onUnmounted(() => {
   backdrop-filter: blur(18px);
 }
 
-:deep(.van-pull-refresh) {
-  min-height: calc(100vh - 46px - 88px); // 保证可滚动区域足够触发下拉
-}
 
 :deep(.van-tabbar-item) {
   color: #8a93a6;

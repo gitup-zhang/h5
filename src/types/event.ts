@@ -20,7 +20,7 @@ export interface EventImage {
 // ─── 报名所需用户信息字段 ────────────────────────────
 
 export interface EventUserInfoField {
-  id: number
+  user_info_id: number
   code: string
   name: string
 }
@@ -81,7 +81,9 @@ export interface RegistrationStatus {
 }
 
 // ─── 4.3 报名请求 ────────────────────────────────────
+// 字段由活动详情的 user_info[].code 动态决定，因此使用索引签名
 
 export interface RegisterEventParams {
   invite_code?: string
+  [key: string]: string | number | undefined
 }

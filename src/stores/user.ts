@@ -41,14 +41,6 @@ export const useUserStore = defineStore('user', {
       return name.charAt(0) || '我'
     },
 
-    /** 性别展示文字 */
-    displayGender: (state) => {
-      const code = state.profile?.gender_code
-      if (code === 'M') return '男'
-      if (code === 'F') return '女'
-      return ''
-    },
-
     /** 展示用手机号（脱敏中间四位） */
     displayMobile: (state) => {
       const phone = state.profile?.phone_number || ''

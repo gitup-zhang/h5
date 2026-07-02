@@ -14,9 +14,6 @@
         <div class="profile-card__identity-main">
           <div class="name-row">
             <h1>{{ displayName }}</h1>
-            <span v-if="profile?.gender" class="gender-badge" :class="genderBadgeClass">
-              {{ userStore.displayGender }}
-            </span>
           </div>
           <p class="phone-row">{{ userStore.displayMobile }}</p>
           <span class="role-tag">{{ userStore.displayRole }}</span>
@@ -149,13 +146,6 @@ const myEvents = computed(() => activityStore.myEvents)
 const myEventsPreview = computed(() => myEvents.value.slice(0, 2))
 
 const displayName = computed(() => profile.value?.name || profile.value?.nickname || '未设置')
-
-const genderBadgeClass = computed(() => {
-  const code = profile.value?.gender_code
-  if (code === 'M') return 'gender-badge--male'
-  if (code === 'F') return 'gender-badge--female'
-  return ''
-})
 
 const stats = computed(() => [
   { label: '已报名', value: activityStore.myEventsTotal },
@@ -340,28 +330,6 @@ const openActivityList = (type: ListType) => {
     color: #7d879a;
     font-size: 14px;
     line-height: 1.2;
-  }
-}
-
-.gender-badge {
-  display: inline-flex;
-  flex-shrink: 0;
-  padding: 2px 8px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
-  background: #f3f4f6;
-  border-radius: 6px;
-
-  &--male {
-    color: #2563eb;
-    background: #eff6ff;
-  }
-
-  &--female {
-    color: #db2777;
-    background: #fdf2f8;
   }
 }
 

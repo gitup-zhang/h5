@@ -38,7 +38,8 @@
               <p
                 class="message-content"
                 :class="{ 'message-content--expanded': isExpanded(msg.id) }"
-              >{{ msg.content }}</p>
+                v-html="msg.content"
+              ></p>
               <span
                 v-if="isSystemMessage(msg)"
                 class="message-expand-hint"
@@ -293,13 +294,18 @@ const goBack = () => router.back()
 
 .message-content {
   margin: 8px 0 0;
-  display: -webkit-box;
   overflow: hidden;
   color: #6b7280;
   font-size: 13px;
   line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  max-height: 3em; // 2 行截断
+
+  // 富文本内部元素
+  :deep(p) { margin: 0 0 4px; }
+  :deep(img) { max-width: 100%; border-radius: 8px; }
+  :deep(a)  { color: #2f80ff; }
+  :deep(ul),
+  :deep(ol) { padding-left: 18px; margin: 4px 0; }
 }
 
 .message-card--clickable {
@@ -317,8 +323,8 @@ const goBack = () => router.back()
 }
 
 .message-content--expanded {
-  -webkit-line-clamp: unset !important;
-  display: block;
+  max-height: none !important;
+  overflow: visible;
 }
 
 .message-expand-hint {

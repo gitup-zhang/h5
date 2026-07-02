@@ -3,7 +3,6 @@ import type {
   EventListParams,
   EventItem,
   EventDetail,
-  RegisterEventParams,
   RegistrationStatus,
   PaginatedData,
 } from '@/types/event'
@@ -17,7 +16,8 @@ export const getEventDetail = (id: number) =>
   http.get<EventDetail>(`/events/${id}`)
 
 // ─── 4.3 报名活动（需要登录）────────────────────────────
-export const registerForEvent = (id: number, data?: RegisterEventParams) =>
+// data 的字段 key 由活动详情的 user_info[].code 动态决定
+export const registerForEvent = (id: number, data?: Record<string, unknown>) =>
   http.post(`/events/${id}/registrations`, data)
 
 // ─── 4.4 查询用户是否已报名（需要登录）─────────────────

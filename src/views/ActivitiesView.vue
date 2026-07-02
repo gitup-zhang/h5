@@ -33,12 +33,13 @@
       </button>
     </section>
 
-    <van-list
-      v-model:loading="loading"
-      :finished="finished"
-      finished-text="没有更多活动了"
-      @load="onLoadMore"
-    >
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <van-list
+        v-model:loading="loading"
+        :finished="finished"
+        finished-text="没有更多活动了"
+        @load="onLoadMore"
+      >
       <section class="activity-list" v-if="events.length > 0">
         <article
           v-for="event in events"
@@ -81,26 +82,47 @@
         <span>试试其他筛选条件吧</span>
       </div>
     </van-list>
+    </van-pull-refresh>
   </main>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { getEventList } from '@/api/event'
 import type { EventItem, EventStatus } from '@/types/event'
 
+defineOptions({ name: 'ActivitiesView' })
+
 type TabKey = 'all' | 'hot' | 'soon'
 
+interface TabCacheEntry {
+  events: EventItem[]
+  total: number
+  page: number
+}
+
+const route = useRoute()
 const router = useRouter()
-const activeTab = ref<TabKey>('all')
+
+function getInitialTab(): TabKey {
+  const tab = route.query.tab
+  if (tab === 'all' || tab === 'hot' || tab === 'soon') return tab
+  return 'all'
+}
+
+const activeTab = ref<TabKey>(getInitialTab())
 const searchQuery = ref('')
 const events = ref<EventItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const finished = ref(false)
+const refreshing = ref(false)
+
+/** 无搜索词时缓存各 tab 的首页数据，切换 tab 命中缓存时直接还原，避免重复请求 */
+const tabCache: Record<string, TabCacheEntry> = {}
 
 const tabs: Array<{ key: TabKey; label: string; status?: EventStatus }> = [
   { key: 'all', label: '全部' },
@@ -149,7 +171,6 @@ const subtitle = computed(() => {
 const currentTab = computed(() => tabs.find((t) => t.key === activeTab.value))
 
 const fetchEvents = async (reset = false) => {
-  if (loading.value) return
   if (reset) {
     page.value = 1
     finished.value = false
@@ -182,6 +203,15 @@ const fetchEvents = async (reset = false) => {
     if (events.value.length >= res.data.total) {
       finished.value = true
     }
+
+    // 无搜索词时写入缓存，下次切回本 tab 直接还原
+    if (!searchQuery.value.trim()) {
+      tabCache[activeTab.value] = {
+        events: [...events.value],
+        total: total.value,
+        page: page.value,
+      }
+    }
   } catch {
     // 错误已由拦截器处理
   } finally {
@@ -189,14 +219,51 @@ const fetchEvents = async (reset = false) => {
   }
 }
 
+const onRefresh = async () => {
+  // 清除当前 tab 缓存，确保拉到最新数据
+  delete tabCache[activeTab.value]
+  await fetchEvents(true)
+  refreshing.value = false
+}
+
 const onLoadMore = () => {
-  if (finished.value || loading.value) return
+  if (finished.value) return
   page.value++
   fetchEvents()
 }
 
-// Tab 切换或搜索时重置
-watch(activeTab, () => fetchEvents(true))
+// Tab 切换：同步URL → 命中缓存则直接还原，否则请求数据
+watch(activeTab, (tab, oldTab) => {
+  router.replace({ query: { ...route.query, tab } })
+
+  // 保存当前 tab 数据到缓存（仅无搜索词时）
+  if (oldTab && !searchQuery.value.trim() && events.value.length > 0) {
+    tabCache[oldTab] = {
+      events: [...events.value],
+      total: total.value,
+      page: page.value,
+    }
+  }
+
+  // 命中缓存 → 直接还原，不走网络
+  const cached = tabCache[tab]
+  if (cached && !searchQuery.value.trim()) {
+    events.value = cached.events
+    total.value = cached.total
+    page.value = cached.page
+    finished.value = cached.events.length >= cached.total
+    return
+  }
+
+  fetchEvents(true)
+})
+
+// keep-alive 场景：外部 URL 变化（如直接导航到 /activities?tab=soon）时同步 tab
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && newTab !== activeTab.value && (newTab === 'all' || newTab === 'hot' || newTab === 'soon')) {
+    activeTab.value = newTab as TabKey
+  }
+})
 watch(searchQuery, () => {
   // 防抖搜索
   const q = searchQuery.value.trim()
@@ -221,6 +288,15 @@ onMounted(() => {
   padding: 0 16px 32px;
   color: #101936;
   background: linear-gradient(180deg, #fbfdff 0%, #f7faff 48%, #f5f8fe 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+// PullRefresh 占满剩余空间，确保 van-list 能正确检测触底
+:deep(.van-pull-refresh) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 // ── Header ──

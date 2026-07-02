@@ -92,8 +92,6 @@ export interface UserInfo {
   nickname: string
   avatar_url: string
   name: string
-  gender_code: string
-  gender: string
   country_code: string
   phone_number: string
   email: string
@@ -113,7 +111,6 @@ export interface UpdateUserParams {
   nickname?: string
   avatar_url?: string
   name?: string
-  gender?: string
   email?: string
   unit?: string
   department?: string
